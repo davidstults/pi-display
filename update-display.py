@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import datetime
 import pytz
 
@@ -84,7 +86,7 @@ try:
     centered_text(draw=draw, msg=f'{battery_soc}%', y=0, font=value_font)
     horizontal_line(draw=draw, y=80)
     left_centered_text(draw=draw, msg=f'PV', y=90, font=label_font)
-    right_centered_text(draw=draw, msg=f'FLOW', y=90, font=label_font)
+    right_centered_text(draw=draw, msg=f'BATT', y=90, font=label_font)
     left_centered_text(draw=draw, msg=f'{pv_power}w', y=118, font=sub_value_font)
     right_centered_text(draw=draw, msg=f'{battery_flow}w', y=118, font=sub_value_font)
     horizontal_line(draw=draw, y=162)
