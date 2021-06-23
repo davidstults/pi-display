@@ -46,7 +46,7 @@ def data_line(draw=None, y=0, label=None, value=None, font=None, fill='black'):
 
 def get_average(client=None, field=None, duration='1m'):
     try:
-        query = ('SELECT mean("value") FROM "{field}" '
+        query = (f'SELECT mean("value") FROM "{field}" '
                  f'WHERE time >= now() - {duration}')
 
         # query influxdb, which will return a generator
