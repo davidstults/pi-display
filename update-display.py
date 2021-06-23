@@ -25,18 +25,11 @@ def centered_text(draw=None, msg='', y=0, font=None, fill='black'):
     draw.text(((W-w)/2, y), msg, font=font, fill=fill)
 
 
-def left_centered_text(draw=None, msg='', y=0, font=None, fill='black'):
-    ''' Draw text centered in the left col of the display at the given Y '''
-    W, H = draw.im.size
-    w, h = draw.textsize(msg, font=font)
-    draw.text(((W/2-w)/2, y), msg, font=font, fill=fill)
-
-
-def right_centered_text(draw=None, msg='', y=0, font=None, fill='black'):
+def right_text(draw=None, msg='', y=0, font=None, fill='black'):
     ''' Draw text centered in the right col of the display at the given Y '''
     W, H = draw.im.size
     w, h = draw.textsize(msg, font=font)
-    draw.text((W/2+(W/2-w)/2, y), msg, font=font, fill=fill)
+    draw.text((W-w-5, y), msg, font=font, fill=fill)
 
 
 def horizontal_line(draw=None, y=0, fill='black'):
@@ -45,32 +38,16 @@ def horizontal_line(draw=None, y=0, fill='black'):
     draw.line((0, y, W, y), fill=fill)
 
 
-def get_1m_average(client=None, field=None):
+def data_line(draw=None, y=0, label=None, value=None, font=None, fill='black'):
+    draw.text((5, y), label, font=font, fill=fill)
+    right_text(draw=draw, msg=value, y=y, font=font)
+    horizontal_line(draw=draw, y=y+20, fill=fill)
+
+
+def get_average(client=None, field=None, duration='1m'):
     try:
-        query = f'SELECT mean("value") FROM "{field}" WHERE time >= now() - 1m'
-
-        # query influxdb, which will return a generator
-        result = client.query(query, database=INFLUX_DATABASE)
-
-        # pull out the field we want
-        result = result[(field, None)]
-
-        # convert to a list, grab the first element, which is a dictionary
-        result = list(result)[0]
-
-        # get the value of 'mean', which is what we asked for
-        result = result.get('mean', 0)
-
-        # we do not need sub-integer precision
-        return round(result)
-
-    except IndexError:
-        return 0
-
-
-def get_60m_average(client=None, field=None):
-    try:
-        query = f'SELECT mean("value") FROM "{field}" WHERE time >= now() - 60m'
+        query = ('SELECT mean("value") FROM "{field}" '
+                 f'WHERE time >= now() - {duration}')
 
         # query influxdb, which will return a generator
         result = client.query(query, database=INFLUX_DATABASE)
@@ -94,16 +71,18 @@ def get_60m_average(client=None, field=None):
 # Get the local time
 now = datetime.datetime.now(tz=pytz.timezone(TIMEZONE))
 # Format it for display
-now = now.strftime('%m/%d/%Y %I:%M%p').lstrip("0").replace(" 0", " ").lower()
+# now = now.strftime('%m/%d/%Y %I:%M%p').lstrip("0").replace(" 0", " ").lower()
+now = now.strftime('%H:%M')
 
 # Grab data out of InfluxDB
 client = InfluxDBClient(INFLUX_HOSTNAME, INFLUX_PORT)
-battery_soc = get_1m_average(client=client, field=BATTERY_SOC_FIELD)
-pv_power = get_1m_average(client=client, field=PV_POWER_FIELD)
-battery_flow = get_1m_average(client=client, field=BATTERY_FLOW_FIELD)
+battery_soc = get_average(client=client, field=BATTERY_SOC_FIELD)
+pv_power = get_average(client=client, field=PV_POWER_FIELD)
+battery_flow = get_average(client=client, field=BATTERY_FLOW_FIELD)
 
-pv_power_60m = get_60m_average(client=client, field=PV_POWER_FIELD)
-battery_flow_60m = get_60m_average(client=client, field=BATTERY_FLOW_FIELD)
+pv_power_1h = get_average(client=client, field=PV_POWER_FIELD, duration='60m')
+battery_flow_1h = get_average(
+    client=client, field=BATTERY_FLOW_FIELD, duration='60m')
 
 # If we got a zero reading on the SOC, just bail out.  A hack we will circle
 # back around to later to fix properly.
@@ -112,9 +91,9 @@ if not battery_soc:
 
 # Calculate some values we want to display
 battery_load = pv_power - battery_flow
-battery_load_60m = pv_power_60m - battery_flow_60m
+battery_load_1h = pv_power_1h - battery_flow_1h
 
-time_to_empty = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow
+time_to_empty = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow_1h
 
 # If the remaining time is negative, it means there is a remaining time,
 # if it is positive then it means we are not currently draining the battery.
@@ -139,7 +118,7 @@ try:
     label_font = ImageFont.truetype('cascadia.otf', 18)
     value_font = ImageFont.truetype('cascadia.otf', 70)
     sub_value_font = ImageFont.truetype('cascadia.otf', 25)
-    ts_font = ImageFont.truetype('cascadia.otf', 14)
+    ts_font = ImageFont.truetype('cascadia.otf', 16)
 
     # Initialize the e-ink Display and associated data structures
     epd = epd2in7.EPD()
@@ -156,35 +135,19 @@ try:
     horizontal_line(draw=draw, y=80)
 
     # Then we have a few supporting fields rendered in smaller fonts,
-    # starting with PV power production
-    left_centered_text(draw=draw, msg='PV', y=90, font=label_font)
-    left_centered_text(
-        draw=draw, msg=f'{pv_power}w', y=118, font=sub_value_font)
+    data_line(draw=draw, y=80, label='Power', value=f'{pv_power}w',
+              font=label_font)
+    data_line(draw=draw, y=100, label='Batt Flow', value=f'{battery_flow}w',
+              font=label_font)
+    data_line(draw=draw, y=120, label='1m Load', value=f'{battery_load}w',
+              font=label_font)
+    data_line(draw=draw, y=140, label='1h Load', value=f'{battery_load_1h}w',
+              font=label_font)
+    data_line(draw=draw, y=160, label='Time Left', value=time_to_empty,
+              font=label_font)
 
-    # followed by the flow of power in or out of the battery
-    right_centered_text(draw=draw, msg='BATT', y=90, font=label_font)
-    right_centered_text(
-        draw=draw, msg=f'{battery_flow}w', y=118, font=sub_value_font)
-    horizontal_line(draw=draw, y=162)
-
-    # Next up we show the calculated DC system load
-    left_centered_text(draw=draw, msg='DC LOAD', y=172, font=label_font)
-    left_centered_text(
-        draw=draw, msg=f'{battery_load}w', y=200, font=sub_value_font)
-
-    # and the remaining time, which is a WAG and for entertainment only
-    right_centered_text(draw=draw, msg='REMAIN', y=172, font=label_font)
-    right_centered_text(
-        draw=draw, msg=time_to_empty, y=200, font=sub_value_font)
-    horizontal_line(draw=draw, y=244)
-
-    # To give us an idea that the display is actually updating, we show
-    # a timestamp of the last update.
-    centered_text(draw=draw, msg=now, y=246, font=ts_font)
-
-    # Then we draw a line down between our sub-values to make a grid
-    W, H = draw.im.size
-    draw.line((W/2, 80, W/2, 244), fill='black')
+    horizontal_line(draw=draw, y=244, fill='black')
+    data_line(draw=draw, y=244, label='Last Updated', value=now, font=ts_font)
 
     # The default orientation of the e-ink display is landscape.  We
     # want to orient the RPi upside down and in portrait mode to make
