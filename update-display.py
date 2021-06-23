@@ -68,6 +68,29 @@ def get_1m_average(client=None, field=None):
         return 0
 
 
+def get_60m_average(client=None, field=None):
+    try:
+        query = f'SELECT mean("value") FROM "{field}" WHERE time >= now() - 60m'
+
+        # query influxdb, which will return a generator
+        result = client.query(query, database=INFLUX_DATABASE)
+
+        # pull out the field we want
+        result = result[(field, None)]
+
+        # convert to a list, grab the first element, which is a dictionary
+        result = list(result)[0]
+
+        # get the value of 'mean', which is what we asked for
+        result = result.get('mean', 0)
+
+        # we do not need sub-integer precision
+        return round(result)
+
+    except IndexError:
+        return 0
+
+
 # Get the local time
 now = datetime.datetime.now(tz=pytz.timezone(TIMEZONE))
 # Format it for display
@@ -79,6 +102,9 @@ battery_soc = get_1m_average(client=client, field=BATTERY_SOC_FIELD)
 pv_power = get_1m_average(client=client, field=PV_POWER_FIELD)
 battery_flow = get_1m_average(client=client, field=BATTERY_FLOW_FIELD)
 
+pv_power_60m = get_60m_average(client=client, field=PV_POWER_FIELD)
+battery_flow_60m = get_60m_average(client=client, field=BATTERY_FLOW_FIELD)
+
 # If we got a zero reading on the SOC, just bail out.  A hack we will circle
 # back around to later to fix properly.
 if not battery_soc:
@@ -86,6 +112,8 @@ if not battery_soc:
 
 # Calculate some values we want to display
 battery_load = pv_power - battery_flow
+battery_load_60m = pv_power_60m - battery_flow_60m
+
 time_to_empty = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow
 
 # If the remaining time is negative, it means there is a remaining time,
