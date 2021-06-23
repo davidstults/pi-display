@@ -79,6 +79,11 @@ battery_soc = get_1m_average(client=client, field=BATTERY_SOC_FIELD)
 pv_power = get_1m_average(client=client, field=PV_POWER_FIELD)
 battery_flow = get_1m_average(client=client, field=BATTERY_FLOW_FIELD)
 
+# If we got a zero reading on the SOC, just bail out.  A hack we will circle
+# back around to later to fix properly.
+if not battery_soc:
+    exit()
+
 # Calculate some values we want to display
 battery_load = pv_power - battery_flow
 time_to_empty = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow
