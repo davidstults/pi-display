@@ -1,0 +1,5 @@
+The files here come directly from the waveshare web site, here: https://www.waveshare.com/wiki/2.7inch_e-Paper_HAT
+
+AFAIK they are completely public and we are not violating anything by including them here.  These are unmodified.
+
+These two files are the minimum required to write to the display using Python.  I elected not to include the entire package from waveshare.
