@@ -70,17 +70,22 @@ def get_average(client=None, field=None, duration='1m'):
 
 # Get the local time
 now = datetime.datetime.now(tz=pytz.timezone(TIMEZONE))
-# Format it for display
-# now = now.strftime('%m/%d/%Y %I:%M%p').lstrip("0").replace(" 0", " ").lower()
-now = now.strftime('%H:%M')
+midnight = datetime.datetime.now(pytz.timezone('US/Pacific')).replace(
+    hour=0, minute=0, second=0, microsecond=0)
+minutes_since_midnight = (now - midnight).seconds // 60
 
 # Grab data out of InfluxDB
 client = InfluxDBClient(INFLUX_HOSTNAME, INFLUX_PORT)
 battery_soc = get_average(client=client, field=BATTERY_SOC_FIELD)
 pv_power = get_average(client=client, field=PV_POWER_FIELD)
 battery_flow = get_average(client=client, field=BATTERY_FLOW_FIELD)
-
 pv_power_1h = get_average(client=client, field=PV_POWER_FIELD, duration='60m')
+
+pv_kwh_avg = get_average(
+    client=client, field=PV_POWER_FIELD, duration=f'{minutes_since_midnight}m')
+pv_wh = pv_kwh_avg * (minutes_since_midnight / 60)
+pv_ah = pv_wh / 12
+
 battery_flow_1h = get_average(
     client=client, field=BATTERY_FLOW_FIELD, duration='60m')
 
@@ -88,6 +93,9 @@ battery_flow_1h = get_average(
 # back around to later to fix properly.
 if not battery_soc:
     exit()
+
+if pv_power < 0:
+    pv_power = 0
 
 # Calculate some values we want to display
 battery_load = pv_power - battery_flow
@@ -99,63 +107,49 @@ time_to_empty = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow_1h
 # if it is positive then it means we are not currently draining the battery.
 
 if time_to_empty < 0:
-    time_to_empty = -time_to_empty
-    tte_days = datetime.timedelta(hours=time_to_empty).days
-    tte_seconds = datetime.timedelta(hours=time_to_empty).seconds
-    tte_hours = tte_seconds // 3600
-    tte_minutes = tte_seconds % 3600 // 60
-
-    # If our remaining time is on the order of days, we just show
-    # the number of days.  If it's less than a day, we show hours.
-    if tte_days:
-        time_to_empty = f'{tte_days}d'
-    else:
-        time_to_empty = f'{tte_hours}h'
+    time_to_empty = round(-time_to_empty)
 else:
     time_to_empty = '\u221e'  # infinity symbol
 
 try:
-    label_font = ImageFont.truetype('cascadia.otf', 18)
-    value_font = ImageFont.truetype('cascadia.otf', 70)
-    sub_value_font = ImageFont.truetype('cascadia.otf', 25)
-    ts_font = ImageFont.truetype('cascadia.otf', 16)
-
     # Initialize the e-ink Display and associated data structures
     epd = epd2in7.EPD()
     epd.init()
 
-    # Note: the width/height are swapped here because we will rotate
-    # the image from landscape to portrait when we are finished
-    # drawing text
-    image = Image.new('1', (epd.width, epd.height), 255)
+    image = Image.new('1', (epd.height, epd.width), 255)
     draw = ImageDraw.Draw(image)
 
-    # The star of this show is the battery state-of-charge.  Make it big.
-    centered_text(draw=draw, msg=f'{battery_soc}%', y=0, font=value_font)
-    horizontal_line(draw=draw, y=80)
+    font = ImageFont.truetype('monaco.dfont', 17)
 
-    # Then we have a few supporting fields rendered in smaller fonts,
-    data_line(draw=draw, y=80, label='Power', value=f'{pv_power}w',
-              font=label_font)
-    data_line(draw=draw, y=100, label='Batt Flow', value=f'{battery_flow}w',
-              font=label_font)
-    data_line(draw=draw, y=120, label='1m Load', value=f'{battery_load}w',
-              font=label_font)
-    data_line(draw=draw, y=140, label='1h Load', value=f'{battery_load_1h}w',
-              font=label_font)
-    data_line(draw=draw, y=160, label='Time Left', value=time_to_empty,
-              font=label_font)
+    if battery_flow > 0:
+        battery_state = 'Charging'
+    else:
+        battery_state = 'Discharging'
 
-    horizontal_line(draw=draw, y=244, fill='black')
-    data_line(draw=draw, y=244, label='Last Updated', value=now, font=ts_font)
+    image = Image.new('1', (264, 176), 255)
+    draw = ImageDraw.Draw(image)
 
-    # The default orientation of the e-ink display is landscape.  We
-    # want to orient the RPi upside down and in portrait mode to make
-    # cord orientation sensible.  So we rotate our image to match.
-    image = image.rotate(270, expand=True)
+    h, w = draw.textsize(f'{battery_soc}%', font=font)
+    draw.text((45-h, 5), f'{battery_soc}%', font=font, fill='black')
+    draw.rectangle((50, 5, 259, 25), outline='black', fill='white')
+    draw.rectangle((53, 8, battery_soc/100*264-8, 22), fill='black')
+
+    draw.text((12, 30), f'Solar Power  {pv_power:>3} Watts', font=font, fill='black')
+    draw.text((12, 54), f'  Generated  {round(pv_ah):>3} Amp Hrs', font=font, fill='black')
+    draw.text((12, 78), f' Power Draw  {battery_load:>3} Watts', font=font, fill='black')
+
+    draw.text((12, 102), f' Batt State  {battery_state}', font=font, fill='black')
+    draw.text((12, 126), f'  Remaining  {time_to_empty:>3} Hours', font=font, fill='black')
+    draw.text((12, 150), f'Last Update  {now.strftime("%m/%d %H:%M")}', font=font, fill='black')
+
+    draw.line((132, 30, 132, 176), fill='black')
+    draw.line((10, 52, 254, 52), fill='black')
+    draw.line((10, 76, 254, 76), fill='black')
+    draw.line((10, 100, 254, 100), fill='black')
+    draw.line((10, 124, 254, 124), fill='black')
+    draw.line((10, 148, 254, 148), fill='black')
+
     epd.display(epd.getbuffer(image))
-
-    # Then we sleep the display so consumption goes to 0
     epd.sleep()
 
 except IOError as e:
@@ -164,3 +158,4 @@ except IOError as e:
 except KeyboardInterrupt:
     logging.info("ctrl + c:")
     epd2in7.epdconfig.module_exit()
+
