@@ -1,0 +1,5 @@
+RPi.GPIO
+spidev
+pytz
+influxdb
+Pillow
