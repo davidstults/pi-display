@@ -11,6 +11,8 @@ sudo make
 sudo make check
 sudo make install
 sudo apt-get update
-sudo apt-get install -y wiringpi python3-pip python3-pil python3-numpy
-sudo pip3 install --upgrade pip
-sudo pip3 install RPi.GPIO spidev
+sudo apt-get install -y wiringpi python3-pip python3-numpy python3-venv libopenjp2-7
+python3 -m venv ~/py
+source ~/py/bin/activate
+pip3 install --upgrade pip
+pip3 install RPi.GPIO spidev pytz influxdb Pillow
