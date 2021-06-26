@@ -1,0 +1,1 @@
+*/3 * * * * /home/pi/py/bin/python3 /home/pi/work/pi-display/update-display.py
