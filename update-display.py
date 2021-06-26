@@ -44,7 +44,7 @@ def data_line(draw=None, y=0, label=None, value=None, font=None, fill='black'):
     horizontal_line(draw=draw, y=y+20, fill=fill)
 
 
-def get_average(client=None, field=None, duration='1m'):
+def get_average(client=None, field=None, duration='3m'):
     try:
         query = (f'SELECT mean("value") FROM "{field}" '
                  f'WHERE time >= now() - {duration}')
