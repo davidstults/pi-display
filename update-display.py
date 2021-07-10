@@ -9,7 +9,7 @@ from waveshare_epd import epd2in7
 from PIL import Image, ImageDraw, ImageFont
 
 TIMEZONE = 'US/Pacific'
-INFLUX_HOSTNAME = '10.11.12.51'
+INFLUX_HOSTNAME = '127.0.0.1'
 INFLUX_PORT = 8086
 INFLUX_DATABASE = 'venus'
 BATTERY_SOC_FIELD = 'battery/Soc'
