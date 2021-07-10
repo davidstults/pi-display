@@ -82,37 +82,47 @@ client = InfluxDBClient(INFLUX_HOSTNAME, INFLUX_PORT)
 battery_soc = get_average(client=client, field=BATTERY_SOC_FIELD)
 pv_power = get_average(client=client, field=PV_POWER_FIELD)
 battery_flow = get_average(client=client, field=BATTERY_FLOW_FIELD)
-pv_power_1h = get_average(client=client, field=PV_POWER_FIELD, duration='60m')
+pv_yield = get_yield(client=client)
 
-pv_kwh_avg = get_average(
-    client=client, field=PV_POWER_FIELD, duration=f'{minutes_since_midnight}m')
-pv_wh = pv_kwh_avg * (minutes_since_midnight / 60)
-pv_ah = pv_wh / 12
+# Get average battery in/out flow for last 10 minutes
+battery_flow_10m = get_average(
+    client=client, field=BATTERY_FLOW_FIELD, duration='10m')
 
-battery_flow_1h = get_average(
-    client=client, field=BATTERY_FLOW_FIELD, duration='60m')
+# If we got a zero reading on the SOC, just bail out, we do not have
+# any data samples in the last 3 minutes.  This should not often happen
+# unless there is a networking problem between the Influx poller and the
+# Venus server.
 
-# If we got a zero reading on the SOC, just bail out.  A hack we will circle
-# back around to later to fix properly.
 if not battery_soc:
     exit()
+
+# Normalize any negative PV readings to zero.  Not saying those values
+# are invalid, but they are usually very small in magnitude and they
+# are non-intuitive, so lets exclude them from the display.
 
 if pv_power < 0:
     pv_power = 0
 
-# Calculate some values we want to display
-battery_load = pv_power - battery_flow
-battery_load_1h = pv_power_1h - battery_flow_1h
+# Calculate how much power is being consumed.  The panel will not generate
+# power if it goes nowhere, so it goes to load or to battery.  So we can
+# subtract the flow to the battery from the yield from the panel and this
+# is our power draw.
 
-time_to_empty = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow_1h
+power_draw = pv_power - battery_flow
+
+# Make a wild ass guess as to how long we could run without any more
+# sunlight if we consume the same average power we have been consuming for
+# the past 10 minutes.
+
+runtime = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow_10m
 
 # If the remaining time is negative, it means there is a remaining time,
 # if it is positive then it means we are not currently draining the battery.
 
-if time_to_empty < 0:
-    time_to_empty = round(-time_to_empty)
+if runtime < 0:
+    runtime = round(-runtime)
 else:
-    time_to_empty = '\u221e'  # infinity symbol
+    runtime = '\u221e'  # infinity symbol
 
 try:
     # Initialize the e-ink Display and associated data structures
@@ -126,8 +136,10 @@ try:
 
     if battery_flow > 0:
         battery_state = 'Charging'
-    else:
+    elif battery_flow < 0:
         battery_state = 'Discharging'
+    else:
+        battery_state = 'Resting'
 
     image = Image.new('1', (264, 176), 255)
     draw = ImageDraw.Draw(image)
@@ -137,13 +149,19 @@ try:
     draw.rectangle((50, 5, 259, 25), outline='black', fill='white')
     draw.rectangle((53, 8, battery_soc/100*264-8, 22), fill='black')
 
-    draw.text((12, 30), f'Solar Power  {pv_power:>3} Watts', font=font, fill='black')
-    draw.text((12, 54), f'  Generated  {round(pv_ah):>3} Amp Hrs', font=font, fill='black')
-    draw.text((12, 78), f' Power Draw  {battery_load:>3} Watts', font=font, fill='black')
+    draw.text((12, 30), f'Solar Power  {pv_power:>3} Watts',
+              font=font, fill='black')
+    draw.text((12, 54), f'  Generated  {pv_yield:>3} WattHrs',
+              font=font, fill='black')
+    draw.text((12, 78), f' Power Draw  {power_draw:>3} Watts',
+              font=font, fill='black')
 
-    draw.text((12, 102), f' Batt State  {battery_state}', font=font, fill='black')
-    draw.text((12, 126), f'  Remaining  {time_to_empty:>3} Hours', font=font, fill='black')
-    draw.text((12, 150), f'Last Update  {now.strftime("%m/%d %H:%M")}', font=font, fill='black')
+    draw.text((12, 102), f' Batt State  {battery_state}',
+              font=font, fill='black')
+    draw.text((12, 126), f'   Run Time  {runtime:>3} Hours',
+              font=font, fill='black')
+    draw.text((12, 150), f'Last Update  {now.strftime("%m/%d %H:%M")}',
+              font=font, fill='black')
 
     draw.line((132, 30, 132, 176), fill='black')
     draw.line((10, 52, 254, 52), fill='black')
@@ -152,8 +170,19 @@ try:
     draw.line((10, 124, 254, 124), fill='black')
     draw.line((10, 148, 254, 148), fill='black')
 
+    image = image.rotate(180)
+    image.save('output.png')
     epd.display(epd.getbuffer(image))
     epd.sleep()
+
+    with open('output.txt', 'a') as f:
+        f.write(f'\n============ {now.strftime("%m/%d %H:%M")} ============\n')
+        f.write(f'Battery SOC: {battery_soc}%\n')
+        f.write(f'Solar Power: {pv_power} Watts\n')
+        f.write(f'Solar Yield: {pv_yield} Watt Hours\n')
+        f.write(f'Power Draw: {power_draw} Watts\n')
+        f.write(f'Battery State: {battery_state}\n')
+        f.write(f'Time-to-Empty: {runtime} Hours\n')
 
 except IOError as e:
     logging.info(e)
@@ -161,4 +190,3 @@ except IOError as e:
 except KeyboardInterrupt:
     logging.info("ctrl + c:")
     epd2in7.epdconfig.module_exit()
-
