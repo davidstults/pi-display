@@ -84,6 +84,10 @@ pv_power = get_average(client=client, field=PV_POWER_FIELD)
 battery_flow = get_average(client=client, field=BATTERY_FLOW_FIELD)
 pv_yield = get_yield(client=client)
 
+pv_power_15m = get_average(client=client, field=PV_POWER_FIELD, duration='15m')
+battery_flow_15m = get_average(client=client, field=BATTERY_FLOW_FIELD,
+                               duration='15m')
+
 # Get average battery in/out flow for last 10 minutes
 battery_flow_10m = get_average(
     client=client, field=BATTERY_FLOW_FIELD, duration='10m')
@@ -106,15 +110,18 @@ if pv_power < 0:
 # Calculate how much power is being consumed.  The panel will not generate
 # power if it goes nowhere, so it goes to load or to battery.  So we can
 # subtract the flow to the battery from the yield from the panel and this
-# is our power draw.
+# is our power draw.  We calculate the value for the last 3 minutes to use
+# on the display, and the value for the last 15 minutes to use in our
+# runtime guesser.
 
 power_draw = pv_power - battery_flow
+power_draw_15m = pv_power_15m - battery_flow_15m
 
 # Make a wild ass guess as to how long we could run without any more
 # sunlight if we consume the same average power we have been consuming for
-# the past 10 minutes.
+# the past 15 minutes.
 
-runtime = (BATTERY_CAPACITY * battery_soc / 100) / battery_flow_10m
+runtime = (BATTERY_CAPACITY * battery_soc / 100) / power_draw_15m
 
 # If the remaining time is negative, it means there is a remaining time,
 # if it is positive then it means we are not currently draining the battery.
