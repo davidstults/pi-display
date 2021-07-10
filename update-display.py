@@ -18,36 +18,39 @@ BATTERY_FLOW_FIELD = 'battery/Dc/0/Power'
 BATTERY_CAPACITY = 1200
 
 
-def centered_text(draw=None, msg='', y=0, font=None, fill='black'):
-    ''' Draw text centered on the display at the given Y '''
-    W, H = draw.im.size
-    w, h = draw.textsize(msg, font=font)
-    draw.text(((W-w)/2, y), msg, font=font, fill=fill)
-
-
-def right_text(draw=None, msg='', y=0, font=None, fill='black'):
-    ''' Draw text centered in the right col of the display at the given Y '''
-    W, H = draw.im.size
-    w, h = draw.textsize(msg, font=font)
-    draw.text((W-w-5, y), msg, font=font, fill=fill)
-
-
-def horizontal_line(draw=None, y=0, fill='black'):
-    ''' Draw a horizontal line at the given Y '''
-    W, H = draw.im.size
-    draw.line((0, y, W, y), fill=fill)
-
-
-def data_line(draw=None, y=0, label=None, value=None, font=None, fill='black'):
-    draw.text((5, y), label, font=font, fill=fill)
-    right_text(draw=draw, msg=value, y=y, font=font)
-    horizontal_line(draw=draw, y=y+20, fill=fill)
-
-
 def get_average(client=None, field=None, duration='3m'):
     try:
         query = (f'SELECT mean("value") FROM "{field}" '
                  f'WHERE time >= now() - {duration}')
+
+        # query influxdb, which will return a generator
+        result = client.query(query, database=INFLUX_DATABASE)
+
+        # pull out the field we want
+        result = result[(field, None)]
+
+        # convert to a list, grab the first element, which is a dictionary
+        result = list(result)[0]
+
+        # get the value of 'mean', which is what we asked for
+        result = result.get('mean', 0)
+
+        # we do not need sub-integer precision
+        return round(result)
+
+    except IndexError:
+        return 0
+
+
+def get_yield(client=None, field=PV_POWER_FIELD):
+    now = datetime.datetime.now(tz=pytz.timezone(TIMEZONE))
+    midnight = datetime.datetime.now(pytz.timezone('US/Pacific')).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    minutes_since_midnight = (now - midnight).seconds // 60
+
+    try:
+        query = (f'SELECT INTEGRAL("value", 60m) FROM "{field}" '
+                 f'WHERE time >= now() - {minutes_since_midnight}m')
 
         # query influxdb, which will return a generator
         result = client.query(query, database=INFLUX_DATABASE)
