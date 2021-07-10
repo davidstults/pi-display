@@ -61,8 +61,8 @@ def get_yield(client=None, field=PV_POWER_FIELD):
         # convert to a list, grab the first element, which is a dictionary
         result = list(result)[0]
 
-        # get the value of 'mean', which is what we asked for
-        result = result.get('mean', 0)
+        # get the value of 'integral', which is what we asked for
+        result = result.get('integral', 0)
 
         # we do not need sub-integer precision
         return round(result)
