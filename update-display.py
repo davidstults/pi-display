@@ -5,17 +5,21 @@ import logging
 import pytz
 
 from influxdb import InfluxDBClient
-from waveshare_epd import epd2in7
 from PIL import Image, ImageDraw, ImageFont
 
 TIMEZONE = 'US/Pacific'
-INFLUX_HOSTNAME = '127.0.0.1'
+INFLUX_HOSTNAME = '10.11.12.51'
 INFLUX_PORT = 8086
 INFLUX_DATABASE = 'venus'
 BATTERY_SOC_FIELD = 'battery/Soc'
 PV_POWER_FIELD = 'system/Dc/Pv/Power'
 BATTERY_FLOW_FIELD = 'battery/Dc/0/Power'
 BATTERY_CAPACITY = 1200
+
+UPDATE_DISPLAY = False
+
+if UPDATE_DISPLAY:
+    from waveshare_epd import epd2in7
 
 
 def get_average(client=None, field=None, duration='3m'):
@@ -132,14 +136,24 @@ else:
     runtime = '\u221e'  # infinity symbol
 
 try:
-    # Initialize the e-ink Display and associated data structures
-    epd = epd2in7.EPD()
-    epd.init()
+    if UPDATE_DISPLAY:
+        # Initialize the e-ink Display and associated data structures
+        epd = epd2in7.EPD()
+        epd.init()
 
-    image = Image.new('1', (epd.height, epd.width), 255)
+    if UPDATE_DISPLAY:
+        img_height = epd.height
+        img_width = epd.width
+    else:
+        img_height = 264
+        img_width = 176
+
+    image = Image.new('1', (img_height, img_width), 255)
     draw = ImageDraw.Draw(image)
 
-    font = ImageFont.truetype('monaco.dfont', 17)
+    small_font = ImageFont.truetype('monaco.dfont', 25)
+    medium_font = ImageFont.truetype('monaco.dfont', 50)
+    big_font = ImageFont.truetype('monaco.dfont', 80)
 
     if battery_flow > 0:
         battery_state = 'Charging'
@@ -151,36 +165,39 @@ try:
     image = Image.new('1', (264, 176), 255)
     draw = ImageDraw.Draw(image)
 
-    h, w = draw.textsize(f'{battery_soc}%', font=font)
-    draw.text((45-h, 5), f'{battery_soc}%', font=font, fill='black')
-    draw.rectangle((50, 5, 259, 25), outline='black', fill='white')
-    draw.rectangle((53, 8, battery_soc/100*264-8, 22), fill='black')
+    h, w = draw.textsize(f'{battery_soc}%', font=big_font)
+    draw.text(((img_height-h)/2, -10), f'{battery_soc}%',
+              font=big_font, fill='black')
 
-    draw.text((12, 30), f'Solar Power  {pv_power:>3} Watts',
-              font=font, fill='black')
-    draw.text((12, 54), f'  Generated  {pv_yield:>3} WattHrs',
-              font=font, fill='black')
-    draw.text((12, 78), f' Power Draw  {power_draw:>3} Watts',
-              font=font, fill='black')
+    draw.text((5, 143), f'\u2192{pv_power}W',
+              font=small_font, fill='black')
 
-    draw.text((12, 102), f' Batt State  {battery_state}',
-              font=font, fill='black')
-    draw.text((12, 126), f'   Run Time  {runtime:>3} Hours',
-              font=font, fill='black')
-    draw.text((12, 150), f'Last Update  {now.strftime("%m/%d %H:%M")}',
-              font=font, fill='black')
+    h, w = draw.textsize(f'{power_draw}W\u2192', font=small_font)
+    draw.text((img_height-h-5, 143), f'{power_draw}W\u2192',
+              font=small_font, fill='black')
 
-    draw.line((132, 30, 132, 176), fill='black')
-    draw.line((10, 52, 254, 52), fill='black')
-    draw.line((10, 76, 254, 76), fill='black')
-    draw.line((10, 100, 254, 100), fill='black')
-    draw.line((10, 124, 254, 124), fill='black')
-    draw.line((10, 148, 254, 148), fill='black')
+    h, w = draw.textsize(f'{pv_yield}Wh', font=small_font)
+    draw.text(((img_height-h)/2, 143), f'{pv_yield}Wh',
+              font=small_font, fill='black')
 
-    image = image.rotate(180)
+    h, w = draw.textsize(f'{runtime} Hours', font=medium_font)
+    draw.text(((img_height-h)/2, 81), f'{runtime} Hours',
+              font=medium_font, fill='black')
+
+    draw.line((10, 83, 254, 83), fill='black')
+    draw.line((10, 84, 254, 84), fill='black')
+
+    draw.line((10, 140, 254, 140), fill='black')
+    draw.line((10, 141, 254, 141), fill='black')
+
+    if UPDATE_DISPLAY:
+        image = image.rotate(180)
+
     image.save('output.png')
-    epd.display(epd.getbuffer(image))
-    epd.sleep()
+
+    if UPDATE_DISPLAY:
+        epd.display(epd.getbuffer(image))
+        epd.sleep()
 
     with open('output.txt', 'a') as f:
         f.write(f'\n============ {now.strftime("%m/%d %H:%M")} ============\n')
