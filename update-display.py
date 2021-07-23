@@ -185,11 +185,12 @@ try:
     with open('output.txt', 'a') as f:
         f.write(f'\n============ {now.strftime("%m/%d %H:%M")} ============\n')
         f.write(f'Battery SOC: {battery_soc}%\n')
-        f.write(f'Solar Power: {pv_power} Watts\n')
+        f.write(f'Battery Flow (15m Avg): {battery_flow} Watts ({battery_flow_15m})\n')
+        f.write(f'Solar Power (15m Avg): {pv_power} Watts ({pv_power_15m})\n')
         f.write(f'Solar Yield: {pv_yield} Watt Hours\n')
-        f.write(f'Power Draw: {power_draw} Watts\n')
+        f.write(f'Power Draw (15m Avg): {power_draw} Watts ({power_draw_15m})\n')
         f.write(f'Battery State: {battery_state}\n')
-        f.write(f'Time-to-Empty: {runtime} Hours\n')
+        f.write(f'Runtime: {runtime} Hours\n')
 
 except IOError as e:
     logging.info(e)
