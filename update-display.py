@@ -16,7 +16,7 @@ PV_POWER_FIELD = 'system/Dc/Pv/Power'
 BATTERY_FLOW_FIELD = 'battery/Dc/0/Power'
 BATTERY_CAPACITY = 1200
 
-UPDATE_DISPLAY = False
+UPDATE_DISPLAY = True
 
 if UPDATE_DISPLAY:
     from waveshare_epd import epd2in7
@@ -125,14 +125,12 @@ power_draw_15m = pv_power_15m - battery_flow_15m
 # sunlight if we consume the same average power we have been consuming for
 # the past 15 minutes.
 
-runtime = (BATTERY_CAPACITY * battery_soc / 100) / power_draw_15m
+runtime = round((BATTERY_CAPACITY * battery_soc / 100) / power_draw_15m)
 
-# If the remaining time is negative, it means there is a remaining time,
-# if it is positive then it means we are not currently draining the battery.
+# If the remaining time is negative, then power draw is negative, which means
+# the battery is charging.
 
 if runtime < 0:
-    runtime = round(-runtime)
-else:
     runtime = '\u221e'  # infinity symbol
 
 try:
@@ -190,10 +188,11 @@ try:
     draw.line((10, 140, 254, 140), fill='black')
     draw.line((10, 141, 254, 141), fill='black')
 
-    if UPDATE_DISPLAY:
-        image = image.rotate(180)
-
     image.save('output.png')
+
+    if UPDATE_DISPLAY:
+        # The mounting orientation of the display is upside down
+        image = image.rotate(180)
 
     if UPDATE_DISPLAY:
         epd.display(epd.getbuffer(image))
